@@ -1,0 +1,59 @@
+import streamlit as st
+from PyPDF2 import PdfReader
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+import os
+
+st.set_page_config(page_title="PDF Chat")
+st.title("PDF Chat")
+
+api_key = st.text_input("OpenAI API Key", type="password")
+if not api_key:
+    st.warning("Enter API key")
+    st.stop()
+
+os.environ["OPENAI_API_KEY"] = api_key
+
+uploaded_file = st.file_uploader("Upload PDF", type="pdf")
+if not uploaded_file:
+    st.info("Upload PDF")
+    st.stop()
+
+pdf = PdfReader(uploaded_file)
+text = ""
+for page in pdf.pages:
+    text += page.extract_text()
+
+if not text:
+    st.error("No text found")
+    st.stop()
+
+st.success("PDF loaded OK!")
+
+llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7)
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", f"PDF: {text[:2000]}"),
+    ("user", "{question}")
+])
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).markdown(msg["content"])
+
+if q := st.chat_input("Ask question:"):
+    st.session_state.messages.append({"role": "user", "content": q})
+    st.chat_message("user").markdown(q)
+    
+    with st.chat_message("assistant"):
+        chain = prompt | llm
+        resp = chain.invoke({"question": q})
+        st.markdown(resp.content)
+        st.session_state.messages.append({"role": "assistant", "content": resp.content})
+
+if st.sidebar.button("Clear Chat"):
+    st.session_state.messages = []
+    st.rerun()
+    
